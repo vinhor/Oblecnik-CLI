@@ -92,7 +92,7 @@ const (
 	alt = 190
 )
 
-func main() { // Edit these values!
+func main() {
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%f&lon=%f&altitude=%d", lat, lon, alt), nil)
 	if err != nil {
@@ -102,8 +102,8 @@ func main() { // Edit these values!
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
-	if err != nil {
-		panic("Error getting weather data")
+	if err != nil || resp.StatusCode != 200 {
+		panic("Error getting weather data; expected 200, got " + resp.Status)
 	}
 
 	defer resp.Body.Close()
@@ -116,7 +116,7 @@ func main() { // Edit these values!
 	var weatherData ForecastData
 
 	err = json.Unmarshal(bytes, &weatherData)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil {
 		fmt.Printf("Response Body: %s\n", string(bytes))
 		fmt.Println(err)
 		panic("Error unmarshalling weather data")
