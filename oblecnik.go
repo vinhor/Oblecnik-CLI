@@ -5,76 +5,78 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"slices"
-	"strconv"
 	"time"
 
-	"github.com/joho/godotenv"
+	"github.com/fatih/color"
 )
 
 type WeatherData struct {
-	Time int `json:"dt"`
-	Main struct {
-		Temp      float64 `json:"temp"`
-		FeelsLike float64 `json:"feels_like"`
-		TempMin   float64 `json:"temp_min"`
-		TempMax   float64 `json:"temp_max"`
-		Pressure  int     `json:"pressure"`
-		SeaLevel  int     `json:"sea_level"`
-		GrndLevel int     `json:"grnd_level"`
-		Humidity  int     `json:"humidity"`
-		TempKf    float64 `json:"temp_kf"`
-	} `json:"main"`
-	Weather []struct {
-		ID          int    `json:"id"`
-		Main        string `json:"main"`
-		Description string `json:"description"`
-		Icon        string `json:"icon"`
-	} `json:"weather"`
-	Clouds struct {
-		All int `json:"all"`
-	} `json:"clouds"`
-	Wind struct {
-		Speed float64 `json:"speed"`
-		Deg   int     `json:"deg"`
-		Gust  float64 `json:"gust"`
-	} `json:"wind"`
-	Visibility int     `json:"visibility"`
-	Pop        float64 `json:"pop"`
-	Rain       struct {
-		ThreeHours float64 `json:"3h"`
-	} `json:"rain,omitempty"`
-	Sys struct {
-		Pod string `json:"pod"`
-	} `json:"sys"`
-	TimeText string `json:"dt_txt"`
+	Time string `json:"time"`
+	Data struct {
+		Instant struct {
+			Details struct {
+				AirPressureAtSeaLevel float64 `json:"air_pressure_at_sea_level"`
+				AirTemperature        float64 `json:"air_temperature"`
+				CloudAreaFraction     float64 `json:"cloud_area_fraction"`
+				RelativeHumidity      float64 `json:"relative_humidity"`
+				WindFromDirection     float64 `json:"wind_from_direction"`
+				WindSpeed             float64 `json:"wind_speed"`
+			} `json:"details"`
+		} `json:"instant"`
+		Next12Hours struct {
+			Summary struct {
+				SymbolCode string `json:"symbol_code"`
+			} `json:"summary"`
+			Details struct {
+			} `json:"details"`
+		} `json:"next_12_hours"`
+		Next1Hours struct {
+			Summary struct {
+				SymbolCode string `json:"symbol_code"`
+			} `json:"summary"`
+			Details struct {
+				PrecipitationAmount float64 `json:"precipitation_amount"`
+			} `json:"details"`
+		} `json:"next_1_hours"`
+		Next6Hours struct {
+			Summary struct {
+				SymbolCode string `json:"symbol_code"`
+			} `json:"summary"`
+			Details struct {
+				PrecipitationAmount float64 `json:"precipitation_amount"`
+			} `json:"details"`
+		} `json:"next_6_hours"`
+	} `json:"data"`
 }
 
 type ForecastData struct {
-	Code    string        `json:"cod"`
-	Message int           `json:"message"`
-	Cnt     int           `json:"cnt"`
-	Data    []WeatherData `json:"list"`
-	City    struct {
-		ID    int    `json:"id"`
-		Name  string `json:"name"`
-		Coord struct {
-			Lat float64 `json:"lat"`
-			Lon float64 `json:"lon"`
-		} `json:"coord"`
-		Country    string `json:"country"`
-		Population int    `json:"population"`
-		Timezone   int    `json:"timezone"`
-		Sunrise    int    `json:"sunrise"`
-		Sunset     int    `json:"sunset"`
-	} `json:"city"`
+	Type     string `json:"type"`
+	Geometry struct {
+		Type        string    `json:"type"`
+		Coordinates []float64 `json:"coordinates"`
+	} `json:"geometry"`
+	Properties struct {
+		Meta struct {
+			UpdatedAt string `json:"updated_at"`
+			Units     struct {
+				AirPressureAtSeaLevel string `json:"air_pressure_at_sea_level"`
+				AirTemperature        string `json:"air_temperature"`
+				CloudAreaFraction     string `json:"cloud_area_fraction"`
+				PrecipitationAmount   string `json:"precipitation_amount"`
+				RelativeHumidity      string `json:"relative_humidity"`
+				WindFromDirection     string `json:"wind_from_direction"`
+				WindSpeed             string `json:"wind_speed"`
+			} `json:"units"`
+		} `json:"meta"`
+		Timeseries []WeatherData `json:"timeseries"`
+	} `json:"properties"`
 }
 
 type WeatherSummary struct {
 	Temps        []float64 // [0] = morning, [1] = noon, [2] = afternoon
 	WindSpeed    float64
-	RainingIndex int // 0 = no rain, 1 = drizzle, 2 = rain
+	RainingIndex int // 0 = sunny, 1 = cloudy, 2 = drizzle, 3 = rain
 	WindIndex    int // 0 = < 8 m/s, 1 = 8-12 m/s, 2 =  > 12 m/s
 }
 
@@ -84,30 +86,26 @@ type ClothingSummary struct {
 	TrousersIndex int // 0 = shorts, 1 = regular trousers, 2 = warm trousers
 }
 
-func main() {
-	err := godotenv.Load()
-	if err != nil {
-		panic("Error loading .env file")
-	}
+const (
+	lat = 50.080152
+	lon = 14.404755
+	alt = 190
+)
 
-	api_key := os.Getenv("WEATHER_KEY")
+func main() { // Edit these values!
 
-	lat_string := os.Getenv("LATITUDE")
-	lon_string := os.Getenv("LONGITUDE")
-	lat, err := strconv.ParseFloat(lat_string, 64)
+	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%f&lon=%f&altitude=%d", lat, lon, alt), nil)
 	if err != nil {
-		panic("Error parsing LATITUDE")
+		panic("Error creating request")
 	}
-	lon, err := strconv.ParseFloat(lon_string, 64)
-	if err != nil {
-		panic("Error parsing LONGITUDE")
-	}
+	req.Header.Set("User-Agent", "Oblecnik/1.0")
 
-	resp, err := http.Get(fmt.Sprintf("https://api.openweathermap.org/data/2.5/forecast?units=metric&cnt=8&lat=%f&lon=%f&appid=%s", lat, lon, api_key))
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println(err)
 		panic("Error getting weather data")
 	}
+
 	defer resp.Body.Close()
 
 	bytes, err := io.ReadAll(resp.Body)
@@ -118,108 +116,229 @@ func main() {
 	var weatherData ForecastData
 
 	err = json.Unmarshal(bytes, &weatherData)
-	if err != nil || weatherData.Code != "200" {
+	if err != nil || resp.StatusCode != 200 {
+		fmt.Printf("Response Body: %s\n", string(bytes))
+		fmt.Println(err)
 		panic("Error unmarshalling weather data")
 	}
 
-	weatherData.Data = slices.DeleteFunc(weatherData.Data, func(data WeatherData) bool {
-		hour := time.Unix(int64(data.Time), 0).Hour()
-		return hour < 6 || hour > 15
+	weatherData.Properties.Timeseries = slices.DeleteFunc(weatherData.Properties.Timeseries, func(data WeatherData) bool {
+		tGMT, _ := time.Parse(time.RFC3339, data.Time)
+		t := tGMT.In(time.Now().Location())
+		hour := t.Hour()
+		date := t.Format("2006-01-02")
+		var compareDate string
+		if time.Now().Hour() > 6 {
+			compareDate = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+		} else {
+			compareDate = time.Now().Format("2006-01-02")
+		}
+		if date != compareDate {
+			return true
+		}
+		return hour != 6 && hour != 12 && hour != 15
 	})
 
 	var weatherSummary WeatherSummary
 	weatherSummary.Temps = make([]float64, 3)
-	weatherSummary.Temps[0] = weatherData.Data[0].Main.Temp
-	weatherSummary.Temps[1] = weatherData.Data[1].Main.Temp
-	weatherSummary.Temps[2] = weatherData.Data[2].Main.Temp
+	weatherSummary.Temps[0] = weatherData.Properties.Timeseries[0].Data.Instant.Details.AirTemperature
+	weatherSummary.Temps[1] = weatherData.Properties.Timeseries[1].Data.Instant.Details.AirTemperature
+	weatherSummary.Temps[2] = weatherData.Properties.Timeseries[2].Data.Instant.Details.AirTemperature
 	weatherSummary.WindIndex = 0
 	weatherSummary.WindSpeed = 0
 	weatherSummary.RainingIndex = 0
 
-	fmt.Println(weatherData.Data)
+	cloudy_codes := []string{
+		"partlycloudy_day",
+		"partlycloudy_night",
+		"partlycloudy_polartwilight",
+		"cloudy",
+	}
 
-	for _, data := range weatherData.Data {
-		if slices.Contains([]int{200, 230, 231, 300, 301, 310, 311, 321, 600, 620}, data.Weather[0].ID) && weatherSummary.RainingIndex == 0 {
-			weatherSummary.RainingIndex = 1
-		} else if slices.Contains([]int{201, 202, 210, 211, 212, 221, 232, 302, 312, 313, 314, 321, 500, 501, 502, 503, 054, 511, 520, 521, 522, 531, 601, 602, 611, 612, 613, 615, 616, 621, 622}, data.Weather[0].ID) {
-			weatherSummary.RainingIndex = 2
-		} else {
-			weatherSummary.RainingIndex = 0
-		}
+	drizzle_codes := []string{
+		"lightsnowshowers_day",
+		"lightsnowshowers_night",
+		"lightsnowshowers_polartwilight",
+		"lightrainshowers_day",
+		"lightrainshowers_night",
+		"lightrainshowers_polartwilight",
+		"lightsleet",
+		"lightsleetshowers_day",
+		"lightsleetshowers_night",
+		"lightsleetshowers_polartwilight",
+		"lightrain",
+		"fog",
+		"lightrainshowersandthunder_day",
+		"lightrainshowersandthunder_night",
+		"lightrainshowersandthunder_polartwilight",
+		"lightsnowandthunder",
+		"lightssleetshowersandthunder_day",
+		"lightssleetshowersandthunder_night",
+		"lightssleetshowersandthunder_polartwilight",
+		"lightsleetandthunder",
+	}
 
-		if data.Wind.Speed <= 12 && data.Wind.Speed > 8 && weatherSummary.WindIndex == 0 {
+	rain_codes := []string{
+		"heavyrainandthunder",
+		"heavysnowandthunder",
+		"rainandthunder",
+		"heavysleetshowersandthunder_day",
+		"heavysleetshowersandthunder_night",
+		"heavysleetshowersandthunder_polartwilight",
+		"heavysnow",
+		"heavyrainshowers_day",
+		"heavyrainshowers_night",
+		"heavyrainshowers_polartwilight",
+		"heavyrain",
+		"heavysleetshowers_day",
+		"heavysleetshowers_night",
+		"heavysleetshowers_polartwilight",
+		"snow",
+		"heavyrainshowersandthunder_day",
+		"heavyrainshowersandthunder_night",
+		"heavyrainshowersandthunder_polartwilight",
+		"snowshowers_day",
+		"snowshowers_night",
+		"snowshowers_polartwilight",
+		"snowshowersandthunder_day",
+		"snowshowersandthunder_night",
+		"snowshowersandthunder_polartwilight",
+		"heavysleetandthunder",
+		"rainshowersandthunder_day",
+		"rainshowersandthunder_night",
+		"rainshowersandthunder_polartwilight",
+		"rain",
+		"rainshowers_day",
+		"rainshowers_night",
+		"rainshowers_polartwilight",
+		"sleetandthunder",
+		"sleet",
+		"sleetshowersandthunder_day",
+		"sleetshowersandthunder_night",
+		"sleetshowersandthunder_polartwilight",
+		"rainshowersandthunder_day",
+		"rainshowersandthunder_night",
+		"rainshowersandthunder_polartwilight",
+		"snowandthunder",
+		"heavysnowshowersandthunder_day",
+		"heavysnowshowersandthunder_night",
+		"heavysnowshowersandthunder_polartwilight",
+		"heavysnowshowers_day",
+		"heavysnowshowers_night",
+		"heavysnowshowers_polartwilight",
+	}
+
+	minTemp := slices.Min(weatherSummary.Temps)
+	maxTemp := slices.Max(weatherSummary.Temps)
+
+	if slices.Contains(drizzle_codes, weatherData.Properties.Timeseries[0].Data.Next12Hours.Summary.SymbolCode) && weatherSummary.RainingIndex != 3 {
+		weatherSummary.RainingIndex = 2
+	} else if slices.Contains(rain_codes, weatherData.Properties.Timeseries[0].Data.Next12Hours.Summary.SymbolCode) {
+		weatherSummary.RainingIndex = 3
+	} else if slices.Contains(cloudy_codes, weatherData.Properties.Timeseries[0].Data.Next12Hours.Summary.SymbolCode) && weatherSummary.RainingIndex == 0 {
+		weatherSummary.RainingIndex = 1
+	}
+
+	for _, data := range weatherData.Properties.Timeseries {
+		if data.Data.Instant.Details.WindSpeed <= 12 && data.Data.Instant.Details.WindSpeed > 8 && weatherSummary.WindIndex == 0 {
 			weatherSummary.WindIndex = 1
-		} else if data.Wind.Speed > 12 {
+		} else if data.Data.Instant.Details.WindSpeed > 12 {
 			weatherSummary.WindIndex = 2
 		}
 
-		if weatherSummary.WindSpeed < data.Wind.Speed {
-			weatherSummary.WindSpeed = data.Wind.Speed
+		if weatherSummary.WindSpeed < data.Data.Instant.Details.WindSpeed {
+			weatherSummary.WindSpeed = data.Data.Instant.Details.WindSpeed
 		}
 	}
 
 	var clothingSummary ClothingSummary
-	if slices.Min(weatherSummary.Temps) < 23 {
+	if maxTemp < 21 || (maxTemp < 26 && (weatherSummary.RainingIndex == 2 || weatherSummary.RainingIndex == 3)) {
 		clothingSummary.Hoodie = true
 	} else {
 		clothingSummary.Hoodie = false
 	}
-	if slices.Min(weatherSummary.Temps) < 5 {
+	if maxTemp < 10 {
 		clothingSummary.JacketIndex = 2
-	} else if slices.Min(weatherSummary.Temps) < 17 {
+	} else if maxTemp < 19 || (weatherSummary.RainingIndex == 3 && minTemp >= 10) {
 		clothingSummary.JacketIndex = 1
 	} else {
 		clothingSummary.JacketIndex = 0
 	}
 
-	if slices.Max(weatherSummary.Temps) > 25 {
+	if weatherSummary.RainingIndex == 0 && maxTemp > 22 {
+		clothingSummary.JacketIndex = 0
+	}
+
+	if weatherSummary.WindIndex >= 1 && minTemp >= 10 {
+		clothingSummary.JacketIndex = 1
+	}
+
+	if maxTemp > 25 {
 		clothingSummary.TrousersIndex = 0
-	} else if slices.Max(weatherSummary.Temps) > 5 {
+	} else if maxTemp > 5 {
 		clothingSummary.TrousersIndex = 1
 	} else {
 		clothingSummary.TrousersIndex = 2
 	}
 
+	boldBlue := color.New(color.FgHiBlue).Add(color.Bold).SprintFunc()
+	boldRed := color.New(color.FgHiRed).Add(color.Bold).SprintFunc()
+	boldCyan := color.New(color.FgHiCyan).Add(color.Bold).SprintFunc()
+
 	var windString string
 	if weatherSummary.WindSpeed > 0 {
-		windString = fmt.Sprintf("vítr až %.1f m/s", weatherSummary.WindSpeed)
+		windString = fmt.Sprintf("vítr až %s m/s", boldCyan(weatherSummary.WindSpeed))
 	} else {
-		windString = "bezvětří"
+		windString = boldCyan("bezvětří")
 	}
 
-	var rainString string
+	minTempStr := fmt.Sprintf("%.1f", slices.Min(weatherSummary.Temps))
+	maxTempStr := fmt.Sprintf("%.1f", slices.Max(weatherSummary.Temps))
+
+	fmt.Printf("Teploty od %s ˚C do %s ˚C, %s, ", boldBlue(minTempStr), boldRed(maxTempStr), windString)
+
 	switch weatherSummary.RainingIndex {
 	case 0:
-		rainString = "bez deště"
+		color.HiYellow("slunečno")
 	case 1:
-		rainString = "jemný dešť"
+		color.HiWhite("zataženo")
 	case 2:
-		rainString = "silný dešť"
+		color.HiCyan("jemný dešť")
+	case 3:
+		color.HiBlue("silný dešť")
 	}
 
-	fmt.Printf("Teploty od %.1f ˚C do %.1f ˚C, %s, %s\n", slices.Min(weatherSummary.Temps), slices.Max(weatherSummary.Temps), windString, rainString)
-	fmt.Println("Oblečení:")
+	inverted := color.New(color.FgBlack, color.BgWhite).SprintFunc()
+	hiRed := color.New(color.FgHiRed).SprintFunc()
+	hiGreen := color.New(color.FgHiGreen).SprintFunc()
+	hiCyan := color.New(color.FgHiCyan).SprintFunc()
+	hiBlue := color.New(color.FgHiBlue).SprintFunc()
+	hiYellow := color.New(color.FgHiYellow).SprintFunc()
+	hiWhite := color.New(color.FgHiWhite).SprintFunc()
+	hiMagenta := color.New(color.FgHiMagenta).SprintFunc()
+
+	fmt.Printf("\n%v\n", inverted("Oblečení:"))
 	var clothesString string
 	if clothingSummary.Hoodie {
-		clothesString = "Mikina\n"
+		clothesString = hiRed("Mikina\n")
 	} else {
-		clothesString = "Tričko\n"
+		clothesString = hiGreen("Tričko\n")
 	}
 
 	switch clothingSummary.JacketIndex {
 	case 1:
-		clothesString += "Tenká bunda\n"
+		clothesString += hiCyan("Tenká bunda\n")
 	case 2:
-		clothesString += "Péřová bunda\n"
+		clothesString += hiBlue("Péřová bunda\n")
 	}
 
 	switch clothingSummary.TrousersIndex {
 	case 0:
-		clothesString += "Kraťasy\n"
+		clothesString += hiYellow("Kraťasy\n")
 	case 1:
-		clothesString += "Kalhoty\n"
+		clothesString += hiWhite("Kalhoty\n")
 	case 2:
-		clothesString += "Zateplené kalhoty\n"
+		clothesString += hiMagenta("Zateplené kalhoty\n")
 	}
 
 	fmt.Println(clothesString)
