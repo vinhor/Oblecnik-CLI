@@ -72,6 +72,8 @@ func TestUnmarshaling(t *testing.T) {
 	}
 }
 
+// TODO: combine tests, make tests into calling the function from oblecnik.go
+
 func TestFiltering(t *testing.T) {
 	// Filter the timeseries and check conditions
 	weatherData.Properties.Timeseries = slices.DeleteFunc(weatherData.Properties.Timeseries, func(data WeatherData) bool {

@@ -14,7 +14,7 @@ import (
 const (
 	lat = 50.080152
 	lon = 14.404755
-	alt = 190
+	alt = 190 // set to -500 if you don't know the altitude
 )
 
 type WeatherData struct {
@@ -93,8 +93,14 @@ type ClothingSummary struct {
 }
 
 func main() {
-
-	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%f&lon=%f&altitude=%d", lat, lon, alt), nil)
+	// TODO: start
+	var req *http.Request
+	var err error
+	if alt == -500 {
+		req, err = http.NewRequest("GET", fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%f&lon=%f", lat, lon), nil)
+	} else {
+		req, err = http.NewRequest("GET", fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%f&lon=%f&altitude=%d", lat, lon, alt), nil)
+	}
 	if err != nil {
 		panic("Error creating request")
 	}
@@ -138,6 +144,8 @@ func main() {
 		}
 		return hour != 7 && hour != 12 && hour != 15
 	})
+
+	// TODO: end - make into a function
 
 	var weatherSummary WeatherSummary
 	weatherSummary.Temps = make([]float64, 3)
