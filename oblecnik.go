@@ -11,6 +11,12 @@ import (
 	"github.com/fatih/color"
 )
 
+const (
+	lat = 50.080152
+	lon = 14.404755
+	alt = 190
+)
+
 type WeatherData struct {
 	Time string `json:"time"`
 	Data struct {
@@ -86,12 +92,6 @@ type ClothingSummary struct {
 	TrousersIndex int // 0 = shorts, 1 = regular trousers, 2 = warm trousers
 }
 
-const (
-	lat = 50.080152
-	lon = 14.404755
-	alt = 190
-)
-
 func main() {
 
 	req, err := http.NewRequest("GET", fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%f&lon=%f&altitude=%d", lat, lon, alt), nil)
@@ -136,7 +136,7 @@ func main() {
 		if date != compareDate {
 			return true
 		}
-		return hour != 6 && hour != 12 && hour != 15
+		return hour != 7 && hour != 12 && hour != 15
 	})
 
 	var weatherSummary WeatherSummary

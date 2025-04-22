@@ -88,7 +88,7 @@ func TestFiltering(t *testing.T) {
 		if date != compareDate {
 			return true
 		}
-		return hour != 6 && hour != 12 && hour != 15
+		return hour != 7 && hour != 12 && hour != 15
 	})
 
 	// Validate the filtered timeseries length
@@ -102,7 +102,7 @@ func TestFiltering(t *testing.T) {
 		t.Errorf("Error parsing time: %v", err)
 	}
 	date := dateTime.Format("2006-01-02")
-	if dateTime.In(time.Now().Location()).Hour() != 6 {
+	if dateTime.In(time.Now().Location()).Hour() != 7 {
 		t.Errorf("Expected time to be 6, got %d", dateTime.Hour())
 	}
 
