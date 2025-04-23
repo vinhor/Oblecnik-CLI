@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	lat = 50.080152
-	lon = 14.404755
-	alt = 190 // set to -500 if you don't know the altitude
+	lat = 50.080152 // zeměpisná šířka
+	lon = 14.404755 // zeměpisná délka
+	alt = 190       // nadmořská výška; nastav na -500 pokud neznáš
 )
 
 type WeatherData struct {
@@ -80,16 +80,16 @@ type ForecastData struct {
 }
 
 type WeatherSummary struct {
-	Temps        []float64 // [0] = morning, [1] = noon, [2] = afternoon
+	Temps        []float64 // [0] = ráno, [1] = poledne, [2] = odpoledne
 	WindSpeed    float64
-	RainingIndex int // 0 = sunny, 1 = cloudy, 2 = drizzle, 3 = rain
-	WindIndex    int // 0 = < 8 m/s, 1 = 8-12 m/s, 2 =  > 12 m/s
+	RainingIndex int // 0 = slunečno, 1 = zataženo, 2 = jemný déšť, 3 = silný déšť
+	WindIndex    int // 0 = < 8 m/s, 1 = 8-12 m/s, 2 = > 12 m/s
 }
 
 type ClothingSummary struct {
 	Hoodie        bool
-	JacketIndex   int // 0 = no jacket, 1 = standard jacket, 2 = winter jacket
-	TrousersIndex int // 0 = shorts, 1 = regular trousers, 2 = warm trousers
+	JacketIndex   int // 0 = bez bundy, 1 = standardní bunda, 2 = zimní bunda
+	TrousersIndex int // 0 = šortky, 1 = kalhoty, 2 = teplé kalhoty
 }
 
 func main() {
@@ -102,21 +102,21 @@ func main() {
 		req, err = http.NewRequest("GET", fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%f&lon=%f&altitude=%d", lat, lon, alt), nil)
 	}
 	if err != nil {
-		panic("Error creating request")
+		panic("Chyba při vytváření HTTP požadavku")
 	}
 	req.Header.Set("User-Agent", "Oblecnik/1.0")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
-		panic("Error getting weather data; expected 200, got " + resp.Status)
+		panic("Chyba při získávání dat; očekáváno 200, ale odpověď serveru byla " + resp.Status)
 	}
 
 	defer resp.Body.Close()
 
 	bytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		panic("Error reading weather data")
+		panic("Chyba při čtení dat")
 	}
 
 	var weatherData ForecastData
@@ -125,7 +125,7 @@ func main() {
 	if err != nil {
 		fmt.Printf("Response Body: %s\n", string(bytes))
 		fmt.Println(err)
-		panic("Error unmarshalling weather data")
+		panic("Chyba při zpracování dat")
 	}
 
 	weatherData.Properties.Timeseries = slices.DeleteFunc(weatherData.Properties.Timeseries, func(data WeatherData) bool {
@@ -134,7 +134,7 @@ func main() {
 		hour := t.Hour()
 		date := t.Format("2006-01-02")
 		var compareDate string
-		if time.Now().Hour() > 6 {
+		if time.Now().Hour() > 7 {
 			compareDate = time.Now().AddDate(0, 0, 1).Format("2006-01-02")
 		} else {
 			compareDate = time.Now().Format("2006-01-02")
@@ -236,9 +236,6 @@ func main() {
 		"heavysnowshowers_polartwilight",
 	}
 
-	minTemp := slices.Min(weatherSummary.Temps)
-	maxTemp := slices.Max(weatherSummary.Temps)
-
 	if slices.Contains(drizzle_codes, weatherData.Properties.Timeseries[0].Data.Next12Hours.Summary.SymbolCode) && weatherSummary.RainingIndex != 3 {
 		weatherSummary.RainingIndex = 2
 	} else if slices.Contains(rain_codes, weatherData.Properties.Timeseries[0].Data.Next12Hours.Summary.SymbolCode) {
@@ -259,35 +256,7 @@ func main() {
 		}
 	}
 
-	var clothingSummary ClothingSummary
-	if maxTemp < 21 || (maxTemp < 26 && (weatherSummary.RainingIndex == 2 || weatherSummary.RainingIndex == 3)) {
-		clothingSummary.Hoodie = true
-	} else {
-		clothingSummary.Hoodie = false
-	}
-	if maxTemp < 10 {
-		clothingSummary.JacketIndex = 2
-	} else if maxTemp < 19 || (weatherSummary.RainingIndex == 3 && minTemp >= 10) {
-		clothingSummary.JacketIndex = 1
-	} else {
-		clothingSummary.JacketIndex = 0
-	}
-
-	if weatherSummary.RainingIndex == 0 && maxTemp > 22 {
-		clothingSummary.JacketIndex = 0
-	}
-
-	if weatherSummary.WindIndex >= 1 && minTemp >= 10 {
-		clothingSummary.JacketIndex = 1
-	}
-
-	if maxTemp > 25 {
-		clothingSummary.TrousersIndex = 0
-	} else if maxTemp > 5 {
-		clothingSummary.TrousersIndex = 1
-	} else {
-		clothingSummary.TrousersIndex = 2
-	}
+	clothingSummary := decideClothes(weatherSummary)
 
 	boldBlue := color.New(color.FgHiBlue).Add(color.Bold).SprintFunc()
 	boldRed := color.New(color.FgHiRed).Add(color.Bold).SprintFunc()
@@ -302,6 +271,13 @@ func main() {
 
 	minTempStr := fmt.Sprintf("%.1f", slices.Min(weatherSummary.Temps))
 	maxTempStr := fmt.Sprintf("%.1f", slices.Max(weatherSummary.Temps))
+
+	date, err := time.Parse("2006-01-02T15:04:05Z", weatherData.Properties.Timeseries[0].Time)
+	if err != nil {
+		panic("Chyba při převádění času")
+	}
+
+	fmt.Println("Data pro", date.Format("02. 01. 2006"), "\n ")
 
 	fmt.Printf("Teploty od %s ˚C do %s ˚C, %s, ", boldBlue(minTempStr), boldRed(maxTempStr), windString)
 
@@ -350,4 +326,35 @@ func main() {
 	}
 
 	fmt.Println(clothesString)
+}
+
+func decideClothes(weatherSummary WeatherSummary) ClothingSummary {
+	var clothingSummary ClothingSummary
+	minTemp := slices.Min(weatherSummary.Temps)
+	maxTemp := slices.Max(weatherSummary.Temps)
+	if maxTemp < 21 || (maxTemp < 26 && (weatherSummary.RainingIndex == 2 || weatherSummary.RainingIndex == 3)) { // mikina pokud teplta pod 21 °C, NEBO pokud prší a teplota je pod 26 °C
+		clothingSummary.Hoodie = true
+	} else {
+		clothingSummary.Hoodie = false
+	}
+	if maxTemp < 10 { // zimní bunda při teplotě pod 10 °C, při teplotě mezi 10 a 19 °C tenká bunda (nebo pokud prší a teplota je 10 °C nebo vyšší), jinak bez bundy
+		clothingSummary.JacketIndex = 2
+	} else if maxTemp < 19 || (weatherSummary.RainingIndex == 3 && minTemp >= 10) {
+		clothingSummary.JacketIndex = 1
+	} else {
+		clothingSummary.JacketIndex = 0
+	}
+
+	if weatherSummary.WindIndex >= 1 && minTemp >= 10 { // bunda, pokud je silný vítr
+		clothingSummary.JacketIndex = 1
+	}
+
+	if maxTemp > 25 { // při teplotě nad 25 °C šortky, nad 5 °C kalhoty, jinak zimní kalhoty
+		clothingSummary.TrousersIndex = 0
+	} else if maxTemp > 5 {
+		clothingSummary.TrousersIndex = 1
+	} else {
+		clothingSummary.TrousersIndex = 2
+	}
+	return clothingSummary
 }
