@@ -5,17 +5,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/spf13/viper"
 )
 
-const (
-	lat = 50.080152 // zeměpisná šířka
-	lon = 14.404755 // zeměpisná délka
-	alt = 190       // nadmořská výška; nastav na -500 pokud neznáš
-)
+var lat float64
+var lon float64
+var alt int
 
 type WeatherData struct {
 	Time string `json:"time"`
@@ -93,9 +94,37 @@ type ClothingSummary struct {
 }
 
 func main() {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		fmt.Println("Error retrieving config dir")
+		panic(err)
+	}
+	viper.SetConfigName("config")
+	viper.SetConfigType("yaml")
+	viper.AddConfigPath(fmt.Sprintf("%s/Oblecnik", configDir))
+	viper.SetDefault("altitude", -500)
+
+	if len(os.Args) != 1 {
+		switch os.Args[1] {
+		case "set":
+			setConfig()
+		case "get":
+			getHelp()
+		}
+		os.Exit(0)
+	}
+
+	err = viper.ReadInConfig()
+	if err != nil {
+		panic(fmt.Errorf("fatal error config file: %w", err))
+	}
+
+	lat = viper.GetFloat64("latitude")
+	lon = viper.GetFloat64("longitude")
+	alt = viper.GetInt("altitude")
+
 	// TODO: start
 	var req *http.Request
-	var err error
 	if alt == -500 {
 		req, err = http.NewRequest("GET", fmt.Sprintf("https://api.met.no/weatherapi/locationforecast/2.0/compact?lat=%f&lon=%f", lat, lon), nil)
 	} else {
@@ -339,7 +368,7 @@ func decideClothes(weatherSummary WeatherSummary) ClothingSummary {
 	}
 	if maxTemp < 10 { // zimní bunda při teplotě pod 10 °C, při teplotě mezi 10 a 19 °C tenká bunda (nebo pokud prší a teplota je 10 °C nebo vyšší), jinak bez bundy
 		clothingSummary.JacketIndex = 2
-	} else if maxTemp < 19 || (weatherSummary.RainingIndex == 3 && minTemp >= 10) {
+	} else if maxTemp < 15 || (weatherSummary.RainingIndex == 3 && minTemp >= 10) {
 		clothingSummary.JacketIndex = 1
 	} else {
 		clothingSummary.JacketIndex = 0
@@ -357,4 +386,47 @@ func decideClothes(weatherSummary WeatherSummary) ClothingSummary {
 		clothingSummary.TrousersIndex = 2
 	}
 	return clothingSummary
+}
+
+func setConfig() {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		fmt.Println("Error retrieving config dir")
+		panic(err)
+	}
+	lat, err := strconv.ParseFloat(os.Args[2], 64)
+	if err != nil {
+		panic(err)
+	}
+	viper.Set("latitude", lat)
+
+	lon, err = strconv.ParseFloat(os.Args[3], 64)
+	if err != nil {
+		panic(err)
+	}
+	viper.Set("longitude", lon)
+
+	if len(os.Args) == 5 {
+		alt, err = strconv.Atoi(os.Args[4])
+		viper.Set("altitude", alt)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	err = os.WriteFile(fmt.Sprintf("%s/Oblecnik/config.yaml", configDir), nil, 0755)
+	if err != nil {
+		panic(err)
+	}
+	err = viper.WriteConfig()
+	if err != nil {
+		fmt.Println("Problém při ukládání nastavení")
+		panic(err)
+	}
+}
+
+func getHelp() {
+	fmt.Println("Oblečník - program pro výběr oblečení na základě teploty")
+	fmt.Println("Použití: oblecnik")
+	fmt.Println("Nastavení lokace: oblecnik set <zeměpisná šířka> <zeměpisná délka> [nadmořská výška]")
 }
